@@ -18,7 +18,8 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 # 
 
-from gnuradio import gr, gru, usrp
+from gnuradio import gr, gru
+from gnuradio import uhd
 from gnuradio import eng_notation
 from optparse import OptionParser
 

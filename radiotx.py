@@ -18,7 +18,8 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 # 
 
-from gnuradio import gr, gru, usrp
+from gnuradio import gr, gru
+from gnuradio import uhd
 from gnuradio import eng_notation
 from optparse import OptionParser
 
@@ -33,7 +34,7 @@ class default_radiotx_setup:
     d_options = {'verbose':0, 'debug':1, 'fake_rf':False, 'disable_tx':False,
                  'which_board':0, 'nchannels':1, 'subdev_spec':None,
                  'sample_rate':1.0e6, 'freq':2400.0e6,
-                 'tx_gain': 0.0, 'master_serialno':None}
+                 'tx_gain': 0.0, 'master_serialno':None, 'address':"type=usrp1"}
 
     def get_options():
         dopt = default_radiotx_setup()
@@ -75,9 +76,9 @@ class RadioTx(gr.hier_block2):
         if hasattr(self.pad, 'set_debug'): self.pad.set_debug(options.debug)
 
         # set other options
-        self.set_nchannels (options.nchannels)
+        #self.set_nchannels (options.nchannels)
         self.set_sample_rate (options.sample_rate)
-        self.set_subdev (options.subdev_spec)
+        #self.set_subdev (options.subdev_spec)
         self.set_freq (options.freq)
         self.set_tx_gain (options.tx_gain)
 
@@ -88,26 +89,34 @@ class RadioTx(gr.hier_block2):
         self.connect(self.pad, self.sink)
 
     def make_tx (self, options):
+        self.nchannels = options.nchannels
         if self.fake_rf:
             return rflib.fake_tx()
         else:
-            return usrp.sink_c(options.which_board)
+            #return usrp.sink_c(options.which_board)
+            return uhd.usrp_source(device_addr=options.address,\
+                                   io_type=uhd.io_type.COMPLEX_FLOAT32,\
+                                   num_channels=options.nchannels)
 
     def shutdown(self):
         sys.stderr.write("[radiotx] shutdown called ...\n")
         if self.pad: self.pad.shutdown()
 
+    '''
     def set_nchannels (self, n):
         """ call set_sample_rate and set_subdev after setting nchannels """
         self.nchannels = n
         return self.sink.set_nchannels(n)
+    '''
 
     def set_sample_rate (self, s):
         """ assumes nchannels has been set """
         sizeof_sample = 4 * self.nchannels  # 4 bytes/complex sample = 2 shorts
         max_rate = MAX_USB_RATE / (2 *sizeof_sample) # half-duplex constraint
         self.sample_rate = min (s, max_rate)
+        self.sink.set_samp_rate(self.sample_rate)
         
+        '''
         # get interpolation rate (lower bound on sample rate)
         MAX_INTERP = 512
         ulist = [self.sink]
@@ -120,6 +129,7 @@ class RadioTx(gr.hier_block2):
           sys.stderr.write("[radiotx]: setting interpolation rate to %d on %s\n"%(rinterp, str(u) ) )
           sys.stderr.write("[radiotx]: sample rate = %1.1f MHz\n"%(self.sample_rate*1e-6) )
         return r
+        '''
 
     def set_subdev (self, spec=None):
         """ assumes nchannels has been set """
@@ -166,6 +176,8 @@ class RadioTx(gr.hier_block2):
         if abs(f) < 1e6: f = f*1e6
         self.freq = f
         if self.fake_rf: return     # no subdev for fake rf
+        r = self.sink.set_center_freq(self.freq, 0)
+        '''
         for s in self.subdev:
             r = usrp.tune(s._u, s.which(), s, self.freq)
             if r and (self.verbose > 4):
@@ -176,11 +188,15 @@ class RadioTx(gr.hier_block2):
                 sys.stderr.write("   inverted            = %s\n"%(r.inverted) )
             elif not r:
                 self.error("Unable to set frequency of " \
-                         + "%s to %g MHz"%(str(s),self.freq/1.0e6) )
+                         + "%s to %g MHz"%(str(s),self.freq/1.0e6) 
+        '''
+        
+    
 
     def set_tx_gain (self, g):
+        self.sink.set_gain(g, 0)
         # no tx gain in usrp
-        pass
+        #pass
 
     def set_auto_tr(self, enable):
         if self.fake_rf: return     # no subdev for fake rf
@@ -237,5 +253,9 @@ class RadioTx(gr.hier_block2):
             parser.add_option ("-g", "--tx-gain", type="eng_float", \
                     default=default_radiotx_setup.d_options['tx_gain'], \
                     help="set software transmit gain in dB [default=%default]")
+        if not parser.has_option("-a"):
+            parser.add_option("-a","--address",type="string", |
+                    default=default_radiotx_setup.d_options['address'],\
+                    help="Address of UHD device, [default=%default]")
 
     add_parser_options = Callable (add_parser_options)
