@@ -32,7 +32,7 @@ MAX_USB_RATE = 32e6       #32MB/sec
 
 class default_radiotx_setup:
     d_options = {'verbose':0, 'debug':1, 'fake_rf':False, 'disable_tx':False,
-                 'which_board':0, 'nchannels':1, 'subdev_spec':None,
+                 'which_board':0, 'nchannels':1, 'subdev_spec':"A:0",
                  'sample_rate':1.0e6, 'freq':2400.0e6,
                  'tx_gain': 0.0, 'master_serialno':None, 'address':"type=usrp1"}
 
@@ -78,7 +78,7 @@ class RadioTx(gr.hier_block2):
         # set other options
         #self.set_nchannels (options.nchannels)
         self.set_sample_rate (options.sample_rate)
-        #self.set_subdev (options.subdev_spec)
+        self.set_subdev (options.subdev_spec)
         self.set_freq (options.freq)
         self.set_tx_gain (options.tx_gain)
 
@@ -130,7 +130,18 @@ class RadioTx(gr.hier_block2):
           sys.stderr.write("[radiotx]: sample rate = %1.1f MHz\n"%(self.sample_rate*1e-6) )
         return r
         '''
+    def set_subdev (self, spec=None):
+        """ assumes nchannels has been set """
+        """ call set_freq after subdev is set """
+        if self.fake_rf: return
+        if self.nchannels ==1:
+            if spec is None:
+                spec = "A:0"   #default is DBoard A
+        elif  self.nchannels ==2:
+            spec = "A:0 B:0"
+        self.sink.set_subdev_spec(spec)
 
+    '''
     def set_subdev (self, spec=None):
         """ assumes nchannels has been set """
         """ call set_freq after subdev is set """
@@ -169,14 +180,17 @@ class RadioTx(gr.hier_block2):
         else:
             return self.error("Unable to set subdev; invalid value for " \
                     + "nchannels=%d"%(self.nchannels) )
-        self.set_auto_tr(True)  # enable Automatic Tx/Rx Switching
+        #self.set_auto_tr(True)  # enable Automatic  
+        '''
 
     def set_freq (self, f):
         """ assumes subdev has been set """
         if abs(f) < 1e6: f = f*1e6
         self.freq = f
         if self.fake_rf: return     # no subdev for fake rf
-        r = self.sink.set_center_freq(self.freq, 0)
+        for i in range(self.nchannels):
+            r = self.sink.set_center_freq(self.freq, i)
+        
         '''
         for s in self.subdev:
             r = usrp.tune(s._u, s.which(), s, self.freq)
@@ -194,15 +208,19 @@ class RadioTx(gr.hier_block2):
     
 
     def set_tx_gain (self, g):
-        self.sink.set_gain(g, 0)
+        for i in range(self.nchannels):
+            self.sink.set_gain(g, i)
+        
         # no tx gain in usrp
         #pass
 
+    '''
     def set_auto_tr(self, enable):
         if self.fake_rf: return     # no subdev for fake rf
         for s in self.subdev:
             s.set_auto_tr(enable)
             #s.set_enable(enable)
+    '''
 
     def error (self, msg, level=0):
         if self.verbose >= level: sys.stderr.write("RFTX ERROR: "+str(msg)+"\n")
@@ -238,7 +256,7 @@ class RadioTx(gr.hier_block2):
                     default=default_radiotx_setup.d_options['nchannels'], \
                     help="set number of channels (or antennas) on USRP board [default=%default]")
         if not parser.has_option("-S"):
-            parser.add_option ("-S", "--subdev-spec", type="subdev", \
+            parser.add_option ("-S", "--subdev-spec", type="string", \
                     default=default_radiotx_setup.d_options['subdev_spec'], \
                     help="select USRP Tx/RX side A or B")
         if not parser.has_option("-s"):
