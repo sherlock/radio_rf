@@ -27,15 +27,16 @@ from hydra import rf as rflib
 from hydra.PyHydra import Callable
 
 import sys
+import string
 
 # FIXME: Need to determine actual max speed for USB 2.0
 MAX_USB_RATE = 128e6       #128MB/sec
 
 class default_radiorx_setup:
     d_options = {'verbose':0, 'fake_rf':False,
-                 'which_board':0, 'nchannels':1, 'subdev_spec':None,
+                 'which_board':0, 'nchannels':1, 'subdev_spec':"A:0",
                  'sample_rate':1.0e6, 'freq':2400.0e6,
-                 'rx_gain': 40.0, 'master_serialno':None}
+                 'rx_gain': 40.0, 'master_serialno':None, 'address':"type=usrp1"}
 
     def get_options():
         dopt = default_radiorx_setup()
@@ -71,7 +72,7 @@ class RadioRx(gr.hier_block2):
         self.src = self.make_src (options)
 
         # set options
-        self.set_nchannels (options.nchannels)
+        #self.set_nchannels (options.nchannels)
         sys.stderr.write("[radiorx] set n_channels = %s\n"%(options.nchannels) )
         self.set_sample_rate (options.sample_rate)
         sys.stderr.write("[radiorx] set sample_rate = %.1f MHz\n"%(options.sample_rate/1e6) )
@@ -89,10 +90,14 @@ class RadioRx(gr.hier_block2):
         self.connect(self.src, self)
 
     def make_src (self, options):
+        self.nchannels = options.nchannels
         if options.fake_rf:
             return rflib.fake_rx()
         else:
-            return usrp.source_c(options.which_board)
+            #return usrp.source_c(options.which_board)
+            return uhd.usrp_source(device_addr=options.address,\
+                                   io_type=uhd.io_type.COMPLEX_FLOAT32,\
+                                   num_channels=options.nchannels)
 
     def shutdown(self):
         sys.stderr.write("radiorx.shutdown called ...\n")
@@ -108,7 +113,8 @@ class RadioRx(gr.hier_block2):
         sizeof_sample = 4*self.nchannels  # 4 bytes/complex sample = 2 shorts
         max_rate = MAX_USB_RATE / (2 *sizeof_sample) # half-duplex constraint
         self.sample_rate = min (s, max_rate)
-        
+        self.src.set_samp_rate(self.sample_rate)
+        '''
         # get decimation rates (lower bound on sample rate)
         MAX_DECIM = 256
         ulist = [self.src]
@@ -121,12 +127,21 @@ class RadioRx(gr.hier_block2):
             sys.stderr.write("[radiorx]: sample rate = %1.1f MHz\n"%(self.sample_rate*1e-6) )
             r = u.set_decim_rate(rdecim)
         return r
+        '''
 
     def set_subdev (self, spec=None):
         """ assumes nchannels has been set """
         """ call set_freq after subdev is set """
-        self.subdev = ()
+        #self.subdev = ()
         if self.fake_rf: return     # no subdev for fake rf
+        if self.nchannels == 1:
+            if spec is None:
+                spec = "A:0"   #default is DBoard A
+        elif  self.nchannels == 2:
+            spec = "A:0 B:0"
+        self.src.set_subdev_spec(spec)
+        
+        '''
         """ get subdev spec """
         if spec is None:
             srx1 = usrp.pick_rx_subdevice(self.src)
@@ -162,12 +177,17 @@ class RadioRx(gr.hier_block2):
             return self.error("Unable to set subdev; invalid value for " \
                               + "nchannels=%d"%(self.nchannels) )
         self.set_auto_tr(True)  # enable Automatic Tx/Rx Switching
+        '''
 
     def set_freq (self, f):
         """ assumes subdev has been set """
         if abs(f) < 1e6: f = f*1e6
         self.freq = f
         if self.fake_rf: return     # no subdev for fake rf
+        for i in range(self.nchannels):
+            r = self.src.set_center_freq(self.freq, i)
+        
+        '''
         for s in self.subdev:
             r = usrp.tune(s._u, s.which(), s, self.freq)
             if r and (self.verbose > 0):
@@ -179,10 +199,20 @@ class RadioRx(gr.hier_block2):
             elif not r:
                 self.error("Unable to set frequency of " \
                            + "%s to %g MHz"%(str(s),self.freq/1.0e6) )
+        '''
 
     def set_rx_gain (self, g):
-        self.rx_gain = default_radiorx_setup.d_options['rx_gain']
+        #self.rx_gain = default_radiorx_setup.d_options['rx_gain']
+        self.rx_gain = g
         if self.fake_rf: return     # no subdev for fake rf
+        
+        for i in range(self.nchannels):
+            gain_range = self.src.get_gain_range(i).to_pp_string()
+            gain_range = gain_range[1:(gain_range.find(')'))]
+            ulist = gain_range.split(',')   #[min_gain, max_gain]
+            self.rx_gain = max(min(g, ulist[1]), ulist[0] )
+            self.src.set_gain(self.rx_gain, i)
+        '''
         for s in self.subdev:
             gain_range = s.gain_range()     # [min_gain, max_gain]
             self.rx_gain = max(min(g, gain_range[1]), gain_range[0] )
@@ -190,11 +220,14 @@ class RadioRx(gr.hier_block2):
             if self.verbose>0:
                 sys.stderr.write("[radiorx]: setting rx gain = %.1f dB on %s\n"%(self.rx_gain, s) )
                 sys.stderr.write("           gain range = (%.1f dB, %.1f dB)\n"%(gain_range[0], gain_range[1]) )
+        '''
 
+    '''
     def set_auto_tr(self, enable):
         if self.fake_rf: return     # no subdev for fake rf
         for s in self.subdev:
             s.set_auto_tr(enable)
+    '''
 
     def error (self, msg, level=0):
         if self.verbose >= level: sys.stderr.write("RFRX ERROR: "+str(msg)+"\n")
@@ -222,7 +255,7 @@ class RadioRx(gr.hier_block2):
                     default=default_radiorx_setup.d_options['nchannels'], \
                     help="set number of channels (or antennas) on USRP board [default=%default]")
         if not parser.has_option("-S"):
-            parser.add_option ("-S", "--subdev-spec", type="subdev", \
+            parser.add_option ("-S", "--subdev-spec", type="string", \
                     default=default_radiorx_setup.d_options['subdev_spec'], \
                     help="select USRP Tx/RX side A or B")
         if not parser.has_option("-s"):
@@ -237,5 +270,9 @@ class RadioRx(gr.hier_block2):
             parser.add_option ("-G", "--rx-gain", type="eng_float", \
                     default=default_radiorx_setup.d_options['rx_gain'], \
                     help="set usrp receive gain in dB [default=%default]")
+        if not parser.has_option("-a"):
+            parser.add_option("-a","--address",type="string", |
+                    default=default_radiotx_setup.d_options['address'],\
+                    help="Address of UHD device, [default=%default]")
 
     add_parser_options = Callable (add_parser_options)
