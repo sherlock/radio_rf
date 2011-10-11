@@ -271,7 +271,7 @@ class RadioRx(gr.hier_block2):
                     default=default_radiorx_setup.d_options['rx_gain'], \
                     help="set usrp receive gain in dB [default=%default]")
         if not parser.has_option("-a"):
-            parser.add_option("-a","--address",type="string", |
+            parser.add_option("-a","--address",type="string", \
                     default=default_radiotx_setup.d_options['address'],\
                     help="Address of UHD device, [default=%default]")
 

@@ -34,7 +34,7 @@ class default_radiotx_setup:
     d_options = {'verbose':0, 'debug':1, 'fake_rf':False, 'disable_tx':False,
                  'which_board':0, 'nchannels':1, 'subdev_spec':"A:0",
                  'sample_rate':1.0e6, 'freq':2400.0e6,
-                 'tx_gain': 0.0, 'master_serialno':None, 'address':"type=usrp1"}
+                 'tx_gain': 10.0, 'master_serialno':None, 'address':"type=usrp1"}
 
     def get_options():
         dopt = default_radiotx_setup()
@@ -282,7 +282,7 @@ class RadioTx(gr.hier_block2):
                     default=default_radiotx_setup.d_options['tx_gain'], \
                     help="set software transmit gain in dB [default=%default]")
         if not parser.has_option("-a"):
-            parser.add_option("-a","--address",type="string", |
+            parser.add_option("-a","--address",type="string", \
                     default=default_radiotx_setup.d_options['address'],\
                     help="Address of UHD device, [default=%default]")
 
