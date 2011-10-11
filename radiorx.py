@@ -75,13 +75,13 @@ class RadioRx(gr.hier_block2):
         #self.set_nchannels (options.nchannels)
         sys.stderr.write("[radiorx] set n_channels = %s\n"%(options.nchannels) )
         self.set_sample_rate (options.sample_rate)
-        sys.stderr.write("[radiorx] set sample_rate = %.1f MHz\n"%(options.sample_rate/1e6) )
+        sys.stderr.write("[radiorx] set sample_rate = %.1f MHz\n"%(self.sample_rate/1e6) )
         self.set_subdev (options.subdev_spec)
-        sys.stderr.write("[radiorx] set subdev = %s\n"%(options.subdev_spec) )
+        sys.stderr.write("[radiorx] set subdev = %s\n"%(self.spec) )
         self.set_freq (options.freq)
         sys.stderr.write("[radiorx] set freq = %.1f MHz\n"%(options.freq/1e6) )
         self.set_rx_gain (options.rx_gain)
-        sys.stderr.write("[radiorx] set rx_gain = %s dB\n"%(options.rx_gain) )
+        sys.stderr.write("[radiorx] set rx_gain = %s dB\n"%(self.rx_gain) )
 
         # connect blocks and call hier_block2 constructor
         gr.hier_block2.__init__(self, "RadioRx",
@@ -97,7 +97,8 @@ class RadioRx(gr.hier_block2):
             #return usrp.source_c(options.which_board)
             return uhd.usrp_source(device_addr=options.address,\
                                    io_type=uhd.io_type.COMPLEX_FLOAT32,\
-                                   num_channels=options.nchannels)
+                                   num_channels=1)
+                                   #num_channels=options.nchannels)
 
     def shutdown(self):
         sys.stderr.write("radiorx.shutdown called ...\n")
@@ -135,11 +136,12 @@ class RadioRx(gr.hier_block2):
         #self.subdev = ()
         if self.fake_rf: return     # no subdev for fake rf
         if self.nchannels == 1:
-            if spec is None:
-                spec = "A:0"   #default is DBoard A
+            self.spec = "A:0" 
+            if spec != None:
+                self.spec = spec   #default is DBoard A
         elif  self.nchannels == 2:
-            spec = "A:0 B:0"
-        self.src.set_subdev_spec(spec)
+            self.spec = "A:0 B:0"
+        self.src.set_subdev_spec(self.spec)
         
         '''
         """ get subdev spec """
@@ -210,7 +212,7 @@ class RadioRx(gr.hier_block2):
             gain_range = self.src.get_gain_range(i).to_pp_string()
             gain_range = gain_range[1:(gain_range.find(')'))]
             ulist = gain_range.split(',')   #[min_gain, max_gain]
-            self.rx_gain = max(min(g, ulist[1]), ulist[0] )
+            self.rx_gain = max(min(g, string.atof(ulist[1])), string.atof(ulist[0]) )
             self.src.set_gain(self.rx_gain, i)
         '''
         for s in self.subdev:
@@ -257,7 +259,7 @@ class RadioRx(gr.hier_block2):
         if not parser.has_option("-S"):
             parser.add_option ("-S", "--subdev-spec", type="string", \
                     default=default_radiorx_setup.d_options['subdev_spec'], \
-                    help="select USRP Tx/RX side A or B")
+                    help="select USRP Tx/RX side A or B [default=%default]")
         if not parser.has_option("-s"):
             parser.add_option ("-s", "--sample-rate", type="eng_float", \
                     default=default_radiorx_setup.d_options['sample_rate'], \
@@ -272,7 +274,7 @@ class RadioRx(gr.hier_block2):
                     help="set usrp receive gain in dB [default=%default]")
         if not parser.has_option("-a"):
             parser.add_option("-a","--address",type="string", \
-                    default=default_radiotx_setup.d_options['address'],\
+                    default=default_radiorx_setup.d_options['address'],\
                     help="Address of UHD device, [default=%default]")
 
     add_parser_options = Callable (add_parser_options)

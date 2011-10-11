@@ -27,6 +27,7 @@ from hydra import rf as rflib
 from hydra.PyHydra import Callable
 
 import sys
+import string
 
 MAX_USB_RATE = 32e6       #32MB/sec
 
@@ -78,9 +79,12 @@ class RadioTx(gr.hier_block2):
         # set other options
         #self.set_nchannels (options.nchannels)
         self.set_sample_rate (options.sample_rate)
+        sys.stderr.write("[radiotx] set sample_rate = %.1f MHz\n"%(self.sample_rate/1e6) )
         self.set_subdev (options.subdev_spec)
+        sys.stderr.write("[radiotx] set subdev = %s\n"%(self.spec) )
         self.set_freq (options.freq)
         self.set_tx_gain (options.tx_gain)
+        sys.stderr.write("[radiotx]: tx_gain = %f dB\n"%(self.tx_gain) )
 
         # connect blocks and call hier_block2 constructor
         gr.hier_block2.__init__(self, "RadioTx",
@@ -96,7 +100,8 @@ class RadioTx(gr.hier_block2):
             #return usrp.sink_c(options.which_board)
             return uhd.usrp_sink(device_addr=options.address,\
                                    io_type=uhd.io_type.COMPLEX_FLOAT32,\
-                                   num_channels=options.nchannels)
+                                   num_channels=1)
+                                   #num_channels=options.nchannels)
 
     def shutdown(self):
         sys.stderr.write("[radiotx] shutdown called ...\n")
@@ -135,11 +140,12 @@ class RadioTx(gr.hier_block2):
         """ call set_freq after subdev is set """
         if self.fake_rf: return
         if self.nchannels ==1:
-            if spec is None:
-                spec = "A:0"   #default is DBoard A
+            self.spec = "A:0" 
+            if spec != None:
+                self.spec = spec  #default is DBoard A
         elif  self.nchannels ==2:
-            spec = "A:0 B:0"
-        self.sink.set_subdev_spec(spec)
+            self.spec = "A:0 B:0"
+        self.sink.set_subdev_spec(self.spec)
 
     '''
     def set_subdev (self, spec=None):
@@ -215,8 +221,7 @@ class RadioTx(gr.hier_block2):
             gain_range = self.sink.get_gain_range(i).to_pp_string()
             gain_range = gain_range[1:(gain_range.find(')'))]
             ulist = gain_range.split(',')   #[min_gain, max_gain]
-            self.tx_gain = max(min(g, ulist[1]), ulist[0] )
-            
+            self.tx_gain = max(min(g, string.atof(ulist[1])), string.atof(ulist[0]) )
             self.sink.set_gain(self.tx_gain, i)
         
         
@@ -268,7 +273,7 @@ class RadioTx(gr.hier_block2):
         if not parser.has_option("-S"):
             parser.add_option ("-S", "--subdev-spec", type="string", \
                     default=default_radiotx_setup.d_options['subdev_spec'], \
-                    help="select USRP Tx/RX side A or B")
+                    help="select USRP Tx/RX side A or B [default=%default]")
         if not parser.has_option("-s"):
             parser.add_option ("-s", "--sample-rate", type="eng_float", \
                     default=default_radiotx_setup.d_options['sample_rate'], \
